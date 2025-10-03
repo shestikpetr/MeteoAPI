@@ -1,0 +1,60 @@
+<!-- JavaScript для проверки авторизации и добавления токена к запросам -->
+<script>
+    // Проверка авторизации при загрузке страницы
+    (function() {
+        const token = localStorage.getItem('admin_token');
+
+        // Если нет токена и это не страница логина - редирект
+        if (!token && window.location.pathname !== '/admin/login') {
+            window.location.href = '/admin/login';
+            return;
+        }
+
+        // Если есть токен, добавляем его ко всем fetch запросам
+        if (token) {
+            // Перехватываем все fetch запросы
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                let [resource, config] = args;
+
+                // Добавляем токен к запросам
+                config = config || {};
+                config.headers = config.headers || {};
+                config.headers['Authorization'] = `Bearer ${token}`;
+
+                return originalFetch(resource, config)
+                    .then(response => {
+                        // Если 401 - токен истёк, редирект на логин
+                        if (response.status === 401) {
+                            localStorage.removeItem('admin_token');
+                            localStorage.removeItem('admin_user');
+                            window.location.href = '/admin/login';
+                        }
+                        return response;
+                    });
+            };
+
+            // Добавляем к XMLHttpRequest тоже
+            const originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(...args) {
+                originalOpen.apply(this, args);
+                this.setRequestHeader('Authorization', `Bearer ${token}`);
+            };
+        }
+    })();
+
+    // Функция выхода
+    function logout() {
+        if (confirm('Вы уверены, что хотите выйти?')) {
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('admin_user');
+            window.location.href = '/admin/login';
+        }
+    }
+
+    // Получить информацию о текущем пользователе
+    function getCurrentUser() {
+        const userStr = localStorage.getItem('admin_user');
+        return userStr ? JSON.parse(userStr) : null;
+    }
+</script>

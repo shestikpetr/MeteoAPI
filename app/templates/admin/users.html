@@ -1,0 +1,469 @@
+{% extends "admin/base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Пользователи</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h3 mb-2">
+                    <i class="bi bi-people me-2"></i>
+                    Управление пользователями
+                </h1>
+                <p class="text-muted">Добавление, редактирование и управление пользователями системы</p>
+            </div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
+                <i class="bi bi-person-plus me-2"></i>
+                Создать пользователя
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="stat-card text-primary">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value">{{ users_data.total_count or 0 }}</div>
+                    <div class="stat-label">Всего пользователей</div>
+                </div>
+                <i class="bi bi-people fs-1 opacity-25"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="stat-card text-success">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="activeCount">
+                        {{ users_data.users | selectattr('is_active') | list | length }}
+                    </div>
+                    <div class="stat-label">Активных</div>
+                </div>
+                <i class="bi bi-check-circle fs-1 opacity-25"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="stat-card text-info">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="adminCount">
+                        {{ users_data.users | selectattr('role', 'equalto', 'admin') | list | length }}
+                    </div>
+                    <div class="stat-label">Администраторов</div>
+                </div>
+                <i class="bi bi-shield-check fs-1 opacity-25"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="stat-card text-warning">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="inactiveCount">
+                        {{ users_data.users | rejectattr('is_active') | list | length }}
+                    </div>
+                    <div class="stat-label">Неактивных</div>
+                </div>
+                <i class="bi bi-x-circle fs-1 opacity-25"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Users Table -->
+<div class="admin-table mb-4">
+    <div class="table-responsive">
+        <table class="table table-hover" id="usersTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Пользователь</th>
+                    <th>Email</th>
+                    <th>Роль</th>
+                    <th>Статус</th>
+                    <th>Станции</th>
+                    <th>Создан</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users_data.users %}
+                <tr id="user-row-{{ user.id }}">
+                    <td>{{ user.id }}</td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="avatar bg-primary text-white rounded-circle me-2 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 14px;">
+                                {{ user.username[0]|upper }}
+                            </div>
+                            <strong>{{ user.username }}</strong>
+                        </div>
+                    </td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        {% if user.role == 'admin' %}
+                            <span class="badge bg-danger">
+                                <i class="bi bi-shield-check me-1"></i>Администратор
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary">Пользователь</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if user.is_active %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle me-1"></i>Активен
+                            </span>
+                        {% else %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-x-circle me-1"></i>Неактивен
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-info">{{ user.stations_count or 0 }}</span>
+                    </td>
+                    <td>
+                        <small class="text-muted">
+                            {{ user.created_at or 'N/A' }}
+                        </small>
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" onclick="editUser({{ user.id }})" title="Редактировать">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            {% if user.id != current_user.id %}
+                                {% if user.is_active %}
+                                    <button class="btn btn-outline-warning" onclick="toggleUserStatus({{ user.id }}, false)" title="Деактивировать">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                {% else %}
+                                    <button class="btn btn-outline-success" onclick="toggleUserStatus({{ user.id }}, true)" title="Активировать">
+                                        <i class="bi bi-check-circle"></i>
+                                    </button>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal fade" id="createUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-person-plus me-2"></i>
+                    Создать пользователя
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createUserForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="createUsername" class="form-label">Имя пользователя</label>
+                        <input type="text" class="form-control" id="createUsername" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="createEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="createEmail" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="createPassword" class="form-label">Пароль</label>
+                        <input type="password" class="form-control" id="createPassword" name="password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="createRole" class="form-label">Роль</label>
+                        <select class="form-select" id="createRole" name="role">
+                            <option value="user">Пользователь</option>
+                            <option value="admin">Администратор</option>
+                        </select>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="createIsActive" name="is_active" checked>
+                        <label class="form-check-label" for="createIsActive">
+                            Активный пользователь
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check me-1"></i>
+                        Создать
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-pencil me-2"></i>
+                    Редактировать пользователя
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editUserForm">
+                <input type="hidden" id="editUserId" name="user_id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editUsername" class="form-label">Имя пользователя</label>
+                        <input type="text" class="form-control" id="editUsername" name="username" readonly>
+                        <div class="form-text">Имя пользователя нельзя изменить</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="editEmail" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editRole" class="form-label">Роль</label>
+                        <select class="form-select" id="editRole" name="role">
+                            <option value="user">Пользователь</option>
+                            <option value="admin">Администратор</option>
+                        </select>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="editIsActive" name="is_active">
+                        <label class="form-check-label" for="editIsActive">
+                            Активный пользователь
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check me-1"></i>
+                        Сохранить
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Current users data
+let usersData = {{ users_data.users | tojson }};
+
+// Load initial data on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadInitialData();
+});
+
+// Load initial data from API
+async function loadInitialData() {
+    try {
+        const response = await adminRequest('/admin/api/users');
+        if (response.success) {
+            usersData = response.data.users;
+            updateTable();
+            updateStats();
+        }
+    } catch (error) {
+        console.error('Failed to load initial data:', error);
+        showNotification('Ошибка загрузки данных пользователей', 'danger');
+    }
+}
+
+// Update table with current data
+function updateTable() {
+    const tbody = document.querySelector('#usersTable tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = usersData.map(user => `
+        <tr id="user-row-${user.id}">
+            <td>${user.id}</td>
+            <td>
+                <div class="d-flex align-items-center">
+                    <div class="avatar bg-primary text-white rounded-circle me-2 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 14px;">
+                        ${user.username[0].toUpperCase()}
+                    </div>
+                    <strong>${user.username}</strong>
+                </div>
+            </td>
+            <td>${user.email}</td>
+            <td>
+                ${user.role === 'admin'
+                    ? '<span class="badge bg-danger"><i class="bi bi-shield-check me-1"></i>Администратор</span>'
+                    : '<span class="badge bg-secondary">Пользователь</span>'}
+            </td>
+            <td>
+                ${user.is_active
+                    ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Активен</span>'
+                    : '<span class="badge bg-warning"><i class="bi bi-x-circle me-1"></i>Неактивен</span>'}
+            </td>
+            <td>
+                <span class="badge bg-info">${user.stations_count || 0}</span>
+            </td>
+            <td>
+                <small class="text-muted">${user.created_at || 'N/A'}</small>
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" onclick="editUser(${user.id})" title="Редактировать">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    ${user.id !== 0 ? (user.is_active
+                        ? `<button class="btn btn-outline-warning" onclick="toggleUserStatus(${user.id}, false)" title="Деактивировать">
+                               <i class="bi bi-x-circle"></i>
+                           </button>`
+                        : `<button class="btn btn-outline-success" onclick="toggleUserStatus(${user.id}, true)" title="Активировать">
+                               <i class="bi bi-check-circle"></i>
+                           </button>`) : ''}
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Create user form submission
+document.getElementById('createUserForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const userData = {
+        username: formData.get('username'),
+        email: formData.get('email'),
+        password: formData.get('password'),
+        role: formData.get('role'),
+        is_active: formData.get('is_active') === 'on'
+    };
+
+    try {
+        const response = await adminRequest('/admin/api/users', {
+            method: 'POST',
+            body: JSON.stringify(userData)
+        });
+
+        if (response.success) {
+            showNotification('Пользователь создан успешно', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('createUserModal')).hide();
+            this.reset();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showNotification('Ошибка создания пользователя: ' + response.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Ошибка создания пользователя: ' + error.message, 'danger');
+    }
+});
+
+// Edit user form submission
+document.getElementById('editUserForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const userId = formData.get('user_id');
+    const userData = {
+        email: formData.get('email'),
+        role: formData.get('role'),
+        is_active: formData.get('is_active') === 'on'
+    };
+
+    try {
+        const response = await adminRequest(`/admin/api/users/${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify(userData)
+        });
+
+        if (response.success) {
+            showNotification('Пользователь обновлен успешно', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showNotification('Ошибка обновления пользователя: ' + response.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Ошибка обновления пользователя: ' + error.message, 'danger');
+    }
+});
+
+// Edit user function
+async function editUser(userId) {
+    const user = usersData.find(u => u.id === userId);
+    if (!user) {
+        showNotification('Пользователь не найден', 'danger');
+        return;
+    }
+
+    // Fill form
+    document.getElementById('editUserId').value = user.id;
+    document.getElementById('editUsername').value = user.username;
+    document.getElementById('editEmail').value = user.email;
+    document.getElementById('editRole').value = user.role;
+    document.getElementById('editIsActive').checked = user.is_active;
+
+    // Show modal
+    new bootstrap.Modal(document.getElementById('editUserModal')).show();
+}
+
+// Toggle user status
+async function toggleUserStatus(userId, isActive) {
+    const action = isActive ? 'активировать' : 'деактивировать';
+
+    if (!confirm(`Вы действительно хотите ${action} этого пользователя?`)) {
+        return;
+    }
+
+    try {
+        const response = await adminRequest(`/admin/api/users/${userId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ is_active: isActive })
+        });
+
+        if (response.success) {
+            showNotification(`Пользователь ${isActive ? 'активирован' : 'деактивирован'} успешно`, 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showNotification('Ошибка изменения статуса: ' + response.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Ошибка изменения статуса: ' + error.message, 'danger');
+    }
+}
+
+// Auto-refresh data every 60 seconds
+setInterval(async () => {
+    try {
+        const response = await adminRequest('/admin/api/users');
+        if (response.success) {
+            usersData = response.data.users;
+            updateTable();
+            updateStats();
+        }
+    } catch (error) {
+        console.error('Auto-refresh error:', error);
+    }
+}, 60000);
+
+function updateStats() {
+    const activeCount = usersData.filter(u => u.is_active).length;
+    const adminCount = usersData.filter(u => u.role === 'admin').length;
+    const inactiveCount = usersData.filter(u => !u.is_active).length;
+
+    document.getElementById('activeCount').textContent = activeCount;
+    document.getElementById('adminCount').textContent = adminCount;
+    document.getElementById('inactiveCount').textContent = inactiveCount;
+}
+</script>
+{% endblock %}

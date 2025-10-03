@@ -1,0 +1,591 @@
+{% extends "admin/base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/admin/database">База данных</a></li>
+<li class="breadcrumb-item active">{{ table_name }}</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .column-badge {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.4rem;
+        margin-left: 0.3rem;
+    }
+    .record-actions {
+        white-space: nowrap;
+    }
+    .table-cell-text {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .nullable-field::after {
+        content: " (необязательно)";
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2 class="mb-1">
+                <i class="bi bi-table me-2"></i>
+                {{ table_name }}
+            </h2>
+            <p class="text-muted mb-0">
+                <span class="badge bg-{{ 'primary' if database == 'local' else 'success' }}">
+                    {{ 'Локальная БД' if database == 'local' else 'БД датчиков' }}
+                </span>
+                <span id="recordCount" class="ms-2"></span>
+            </p>
+        </div>
+        <div class="col-md-4 text-end">
+            <button class="btn btn-success" onclick="showCreateModal()">
+                <i class="bi bi-plus-circle me-1"></i>
+                Добавить запись
+            </button>
+            <a href="/admin/database" class="btn btn-secondary">
+                <i class="bi bi-arrow-left me-1"></i>
+                Назад
+            </a>
+        </div>
+    </div>
+
+    <!-- Search and Filter -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input type="text" class="form-control" id="searchInput" placeholder="Поиск...">
+                <button class="btn btn-primary" onclick="performSearch()">Найти</button>
+                <button class="btn btn-outline-secondary" onclick="clearSearch()">Очистить</button>
+            </div>
+        </div>
+        <div class="col-md-6 text-end">
+            <select class="form-select d-inline-block w-auto" id="pageSizeSelect" onchange="changePageSize()">
+                <option value="25">25 записей</option>
+                <option value="50" selected>50 записей</option>
+                <option value="100">100 записей</option>
+                <option value="200">200 записей</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Table Data -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive" id="tableDataContainer">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                            <p class="text-muted mt-2">Загрузка данных...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="Table pagination">
+                <ul class="pagination justify-content-center" id="paginationContainer">
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Modal -->
+<div class="modal fade" id="recordModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Добавить запись</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <form id="recordForm">
+                    <!-- Form fields will be generated dynamically -->
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveRecord()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Подтверждение удаления</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите удалить эту запись?</p>
+                <p class="text-danger"><strong>Это действие необратимо!</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()">Удалить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const TABLE_NAME = '{{ table_name }}';
+    const DATABASE = '{{ database }}';
+
+    let currentPage = 1;
+    let pageSize = 50;
+    let searchQuery = '';
+    let sortBy = '';
+    let sortOrder = 'ASC';
+    let tableSchema = null;
+    let currentEditId = null;
+    let currentDeleteId = null;
+
+    // Load table data
+    async function loadTableData() {
+        try {
+            const token = localStorage.getItem('token');
+            const url = `/admin/api/database/${TABLE_NAME}/data?database=${DATABASE}&page=${currentPage}&page_size=${pageSize}&search=${encodeURIComponent(searchQuery)}&sort_by=${sortBy}&sort_order=${sortOrder}`;
+
+            const response = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Failed to load data');
+
+            const result = await response.json();
+
+            if (result.success) {
+                tableSchema = result.data.schema;
+                displayTableData(result.data);
+                displayPagination(result.data);
+            } else {
+                throw new Error(result.error || 'Failed to load data');
+            }
+        } catch (error) {
+            console.error('Error loading table data:', error);
+            document.getElementById('tableDataContainer').innerHTML = `
+                <div class="alert alert-danger m-3">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Ошибка загрузки данных: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    function displayTableData(data) {
+        const container = document.getElementById('tableDataContainer');
+
+        if (data.data.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center p-4">Нет данных</p>';
+            return;
+        }
+
+        // Update record count
+        document.getElementById('recordCount').textContent = `Всего записей: ${formatNumber(data.total)}`;
+
+        const columns = data.schema.columns;
+        const primaryKey = data.schema.primary_keys[0] || columns[0].name;
+
+        let html = `
+            <table class="table table-hover table-sm mb-0">
+                <thead class="table-light sticky-top">
+                    <tr>
+        `;
+
+        // Column headers with sort
+        columns.forEach(col => {
+            const isSorted = sortBy === col.name;
+            const sortIcon = isSorted ? (sortOrder === 'ASC' ? '▲' : '▼') : '';
+
+            html += `
+                <th style="cursor: pointer;" onclick="sortColumn('${col.name}')">
+                    ${col.name} ${sortIcon}
+                    ${col.key === 'PRI' ? '<span class="column-badge badge bg-warning">PK</span>' : ''}
+                    ${col.extra.includes('auto_increment') ? '<span class="column-badge badge bg-info">AI</span>' : ''}
+                </th>
+            `;
+        });
+
+        html += `
+                        <th class="text-end">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        // Data rows
+        data.data.forEach(row => {
+            html += '<tr>';
+
+            columns.forEach(col => {
+                let value = row[col.name];
+
+                // Format value
+                if (value === null || value === undefined) {
+                    value = '<span class="text-muted">NULL</span>';
+                } else if (typeof value === 'string' && value.length > 100) {
+                    value = `<span class="table-cell-text" title="${escapeHtml(value)}">${escapeHtml(value)}</span>`;
+                } else {
+                    value = escapeHtml(String(value));
+                }
+
+                html += `<td>${value}</td>`;
+            });
+
+            const recordId = row[primaryKey];
+            html += `
+                <td class="text-end record-actions">
+                    <button class="btn btn-sm btn-outline-primary" onclick="editRecord('${recordId}')">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRecord('${recordId}')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            `;
+
+            html += '</tr>';
+        });
+
+        html += `
+                </tbody>
+            </table>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    function displayPagination(data) {
+        const container = document.getElementById('paginationContainer');
+        const totalPages = data.total_pages;
+
+        if (totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+
+        // Previous button
+        html += `
+            <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="goToPage(${currentPage - 1}); return false;">Назад</a>
+            </li>
+        `;
+
+        // Page numbers
+        const maxPages = 7;
+        let startPage = Math.max(1, currentPage - Math.floor(maxPages / 2));
+        let endPage = Math.min(totalPages, startPage + maxPages - 1);
+
+        if (endPage - startPage < maxPages - 1) {
+            startPage = Math.max(1, endPage - maxPages + 1);
+        }
+
+        if (startPage > 1) {
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(1); return false;">1</a></li>`;
+            if (startPage > 2) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            html += `
+                <li class="page-item ${i === currentPage ? 'active' : ''}">
+                    <a class="page-link" href="#" onclick="goToPage(${i}); return false;">${i}</a>
+                </li>
+            `;
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+            }
+            html += `<li class="page-item"><a class="page-link" href="#" onclick="goToPage(${totalPages}); return false;">${totalPages}</a></li>`;
+        }
+
+        // Next button
+        html += `
+            <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="goToPage(${currentPage + 1}); return false;">Вперед</a>
+            </li>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    // Pagination functions
+    function goToPage(page) {
+        currentPage = page;
+        loadTableData();
+    }
+
+    function changePageSize() {
+        pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+        currentPage = 1;
+        loadTableData();
+    }
+
+    function sortColumn(column) {
+        if (sortBy === column) {
+            sortOrder = sortOrder === 'ASC' ? 'DESC' : 'ASC';
+        } else {
+            sortBy = column;
+            sortOrder = 'ASC';
+        }
+        currentPage = 1;
+        loadTableData();
+    }
+
+    function performSearch() {
+        searchQuery = document.getElementById('searchInput').value;
+        currentPage = 1;
+        loadTableData();
+    }
+
+    function clearSearch() {
+        document.getElementById('searchInput').value = '';
+        searchQuery = '';
+        currentPage = 1;
+        loadTableData();
+    }
+
+    // Allow search on Enter key
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
+    });
+
+    // Modal functions
+    async function showCreateModal() {
+        currentEditId = null;
+        document.getElementById('modalTitle').textContent = 'Добавить запись';
+        await generateForm();
+        new bootstrap.Modal(document.getElementById('recordModal')).show();
+    }
+
+    async function editRecord(id) {
+        currentEditId = id;
+        document.getElementById('modalTitle').textContent = 'Редактировать запись';
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/admin/api/database/${TABLE_NAME}/data?database=${DATABASE}&page=1&page_size=1000`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                const primaryKey = result.data.schema.primary_keys[0];
+                const record = result.data.data.find(r => String(r[primaryKey]) === String(id));
+
+                if (record) {
+                    await generateForm(record);
+                    new bootstrap.Modal(document.getElementById('recordModal')).show();
+                }
+            }
+        } catch (error) {
+            console.error('Error loading record:', error);
+            showNotification('Ошибка загрузки записи: ' + error.message, 'danger');
+        }
+    }
+
+    async function generateForm(record = null) {
+        const form = document.getElementById('recordForm');
+        let html = '';
+
+        for (const col of tableSchema.columns) {
+            // Skip auto-increment columns when creating
+            if (!record && col.extra.includes('auto_increment')) {
+                continue;
+            }
+
+            const value = record ? (record[col.name] !== null ? record[col.name] : '') : (col.default || '');
+            const isReadonly = col.key === 'PRI' || col.extra.includes('auto_increment');
+            const isRequired = !col.nullable && !col.default && col.key !== 'PRI';
+
+            html += `<div class="mb-3">`;
+            html += `<label class="form-label ${col.nullable ? 'nullable-field' : ''}">${col.name}`;
+            if (col.key === 'PRI') html += ' <span class="badge bg-warning">PK</span>';
+            if (col.extra.includes('auto_increment')) html += ' <span class="badge bg-info">AI</span>';
+            html += `</label>`;
+
+            // Check if this is a foreign key
+            const fk = tableSchema.foreign_keys.find(f => f.column === col.name);
+
+            if (fk && !isReadonly) {
+                // Generate select for foreign key
+                html += await generateForeignKeySelect(col.name, value);
+            } else if (col.type === 'text' || col.type === 'longtext') {
+                html += `<textarea class="form-control" name="${col.name}" ${isReadonly ? 'readonly' : ''} ${isRequired ? 'required' : ''}>${value}</textarea>`;
+            } else if (col.type === 'tinyint' && col.max_length === 1) {
+                // Boolean field
+                html += `
+                    <select class="form-select" name="${col.name}" ${isReadonly ? 'disabled' : ''}>
+                        <option value="0" ${value == 0 ? 'selected' : ''}>False (0)</option>
+                        <option value="1" ${value == 1 ? 'selected' : ''}>True (1)</option>
+                    </select>
+                `;
+            } else if (col.type.includes('int') || col.type.includes('decimal') || col.type.includes('float')) {
+                html += `<input type="number" class="form-control" name="${col.name}" value="${value}" ${isReadonly ? 'readonly' : ''} ${isRequired ? 'required' : ''}>`;
+            } else if (col.type === 'date') {
+                html += `<input type="date" class="form-control" name="${col.name}" value="${value}" ${isReadonly ? 'readonly' : ''} ${isRequired ? 'required' : ''}>`;
+            } else if (col.type === 'datetime' || col.type === 'timestamp') {
+                // Format datetime for input
+                const formattedValue = value ? value.substring(0, 16) : '';
+                html += `<input type="datetime-local" class="form-control" name="${col.name}" value="${formattedValue}" ${isReadonly ? 'readonly' : ''} ${isRequired ? 'required' : ''}>`;
+            } else {
+                html += `<input type="text" class="form-control" name="${col.name}" value="${value}" ${isReadonly ? 'readonly' : ''} ${isRequired ? 'required' : ''} ${col.max_length ? `maxlength="${col.max_length}"` : ''}>`;
+            }
+
+            html += `<small class="text-muted">Тип: ${col.type}${col.max_length ? `(${col.max_length})` : ''}</small>`;
+            html += `</div>`;
+        }
+
+        form.innerHTML = html;
+    }
+
+    async function generateForeignKeySelect(columnName, currentValue) {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/admin/api/database/${TABLE_NAME}/foreign-key-options?column=${columnName}&database=${DATABASE}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data.length > 0) {
+                let html = `<select class="form-select" name="${columnName}">`;
+                html += `<option value="">-- Выберите --</option>`;
+
+                result.data.forEach(option => {
+                    const selected = String(option.id) === String(currentValue) ? 'selected' : '';
+                    html += `<option value="${option.id}" ${selected}>${option.label} (ID: ${option.id})</option>`;
+                });
+
+                html += `</select>`;
+                return html;
+            }
+        } catch (error) {
+            console.error('Error loading foreign key options:', error);
+        }
+
+        // Fallback to text input
+        return `<input type="text" class="form-control" name="${columnName}" value="${currentValue}">`;
+    }
+
+    async function saveRecord() {
+        const form = document.getElementById('recordForm');
+        const formData = new FormData(form);
+        const data = {};
+
+        formData.forEach((value, key) => {
+            data[key] = value === '' ? null : value;
+        });
+
+        try {
+            const token = localStorage.getItem('token');
+            let url, method;
+
+            if (currentEditId) {
+                // Update
+                url = `/admin/api/database/${TABLE_NAME}/${currentEditId}?database=${DATABASE}`;
+                method = 'PUT';
+            } else {
+                // Create
+                url = `/admin/api/database/${TABLE_NAME}?database=${DATABASE}`;
+                method = 'POST';
+            }
+
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showNotification(currentEditId ? 'Запись обновлена' : 'Запись создана', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('recordModal')).hide();
+                loadTableData();
+            } else {
+                throw new Error(result.error || 'Failed to save record');
+            }
+        } catch (error) {
+            console.error('Error saving record:', error);
+            showNotification('Ошибка сохранения: ' + error.message, 'danger');
+        }
+    }
+
+    function deleteRecord(id) {
+        currentDeleteId = id;
+        new bootstrap.Modal(document.getElementById('deleteModal')).show();
+    }
+
+    async function confirmDelete() {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/admin/api/database/${TABLE_NAME}/${currentDeleteId}?database=${DATABASE}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showNotification('Запись удалена', 'success');
+                bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+                loadTableData();
+            } else {
+                throw new Error(result.error || 'Failed to delete record');
+            }
+        } catch (error) {
+            console.error('Error deleting record:', error);
+            showNotification('Ошибка удаления: ' + error.message, 'danger');
+        }
+    }
+
+    // Utility functions
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Load data on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadTableData();
+    });
+</script>
+{% endblock %}

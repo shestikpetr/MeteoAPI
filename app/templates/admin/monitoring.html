@@ -1,0 +1,386 @@
+{% extends "admin/base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Мониторинг</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h3 mb-2">
+                    <i class="bi bi-graph-up me-2"></i>
+                    Мониторинг системы
+                </h1>
+                <p class="text-muted">Отслеживание состояния и производительности MeteoApp</p>
+            </div>
+            <button class="btn btn-outline-primary" onclick="refreshAll()">
+                <i class="bi bi-arrow-clockwise me-2"></i>
+                Обновить все
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- System Status Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="stat-card text-success">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value">
+                        <i class="bi bi-check-circle-fill"></i>
+                    </div>
+                    <div class="stat-label">Статус API</div>
+                </div>
+                <i class="bi bi-server fs-1 opacity-25"></i>
+            </div>
+            <div class="mt-3">
+                <small class="text-success">
+                    <i class="bi bi-check-circle"></i>
+                    Работает нормально
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="stat-card text-info">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value">
+                        {% if monitoring_data.system.connection_pooling %}
+                            <i class="bi bi-database-check"></i>
+                        {% else %}
+                            <i class="bi bi-database"></i>
+                        {% endif %}
+                    </div>
+                    <div class="stat-label">Пул подключений</div>
+                </div>
+                <i class="bi bi-hdd-network fs-1 opacity-25"></i>
+            </div>
+            <div class="mt-3">
+                {% if monitoring_data.system.connection_pooling %}
+                    <small class="text-success">
+                        <i class="bi bi-check-circle"></i>
+                        Активен
+                    </small>
+                {% else %}
+                    <small class="text-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Отключен
+                    </small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="stat-card text-primary">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value">{{ monitoring_data.database.pools | length }}</div>
+                    <div class="stat-label">Баз данных</div>
+                </div>
+                <i class="bi bi-database fs-1 opacity-25"></i>
+            </div>
+            <div class="mt-3">
+                <small class="text-info">
+                    <i class="bi bi-info-circle"></i>
+                    Подключений активно
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="stat-card text-warning">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value">
+                        <i class="bi bi-clock"></i>
+                    </div>
+                    <div class="stat-label">Последнее обновление</div>
+                </div>
+                <i class="bi bi-arrow-clockwise fs-1 opacity-25"></i>
+            </div>
+            <div class="mt-3">
+                <small class="text-muted" id="lastUpdateTime">
+                    {{ monitoring_data.timestamp or 'N/A' }}
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Database Monitoring -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="stat-card">
+            <h5 class="card-title mb-3">
+                <i class="bi bi-database me-2"></i>
+                Мониторинг базы данных
+            </h5>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-muted">Статус подключений</h6>
+                    <div class="list-group list-group-flush">
+                        {% for pool_name, pool_info in monitoring_data.database.pools.items() %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ pool_name|title }} БД</strong>
+                                <br>
+                                <small class="text-muted">
+                                    {% if pool_info.get('type') == 'single_connection' %}
+                                        Одиночное подключение
+                                    {% else %}
+                                        Пул подключений
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div class="text-end">
+                                {% if pool_info.get('type') == 'single_connection' %}
+                                    <span class="badge bg-secondary">Legacy</span>
+                                {% else %}
+                                    <span class="badge bg-success">Pool</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {% if monitoring_data.system.connection_pooling %}
+                <div class="col-md-6">
+                    <h6 class="text-muted">Настройки пула</h6>
+                    <div class="list-group list-group-flush">
+                        {% if monitoring_data.system.pool_settings %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between">
+                                <span>Минимум подключений:</span>
+                                <strong>{{ monitoring_data.system.pool_settings.min_connections }}</strong>
+                            </div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between">
+                                <span>Максимум подключений:</span>
+                                <strong>{{ monitoring_data.system.pool_settings.max_connections }}</strong>
+                            </div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between">
+                                <span>Timeout простоя:</span>
+                                <strong>{{ monitoring_data.system.pool_settings.max_idle_time }}s</strong>
+                            </div>
+                        </div>
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between">
+                                <span>Timeout подключения:</span>
+                                <strong>{{ monitoring_data.system.pool_settings.connection_timeout }}s</strong>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Configuration -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="stat-card">
+            <h5 class="card-title mb-3">
+                <i class="bi bi-gear me-2"></i>
+                Конфигурация системы
+            </h5>
+            <div class="list-group list-group-flush">
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <span>Пул подключений:</span>
+                        {% if monitoring_data.system.connection_pooling %}
+                            <span class="badge bg-success">Включен</span>
+                        {% else %}
+                            <span class="badge bg-warning">Выключен</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <span>Версия API:</span>
+                        <strong>2.0.0</strong>
+                    </div>
+                </div>
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <span>Framework:</span>
+                        <strong>FastAPI</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="stat-card">
+            <h5 class="card-title mb-3">
+                <i class="bi bi-hdd me-2"></i>
+                Настройки Redis
+            </h5>
+            {% if monitoring_data.system.redis_settings %}
+            <div class="list-group list-group-flush">
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <span>Хост:</span>
+                        <strong>{{ monitoring_data.system.redis_settings.host }}</strong>
+                    </div>
+                </div>
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <span>Порт:</span>
+                        <strong>{{ monitoring_data.system.redis_settings.port }}</strong>
+                    </div>
+                </div>
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <span>База:</span>
+                        <strong>{{ monitoring_data.system.redis_settings.db }}</strong>
+                    </div>
+                </div>
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <span>TTL кэша:</span>
+                        <strong>{{ monitoring_data.system.redis_settings.cache_ttl }}s</strong>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-muted">Настройки Redis недоступны</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="stat-card">
+            <h5 class="card-title mb-3">
+                <i class="bi bi-lightning me-2"></i>
+                Быстрые действия
+            </h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary" onclick="checkDatabaseConnection()">
+                            <i class="bi bi-database me-2"></i>
+                            Проверить подключение к БД
+                        </button>
+                        <button class="btn btn-outline-success" onclick="getConnectionStats()">
+                            <i class="bi bi-graph-up me-2"></i>
+                            Статистика подключений
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-grid gap-2">
+                        <a href="/docs" class="btn btn-outline-info" target="_blank">
+                            <i class="bi bi-file-text me-2"></i>
+                            Документация API
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Real-time Updates -->
+<div class="row">
+    <div class="col-12">
+        <div class="text-center text-muted">
+            <small>
+                <i class="bi bi-arrow-clockwise"></i>
+                Автообновление каждые 30 секунд
+                <span class="ms-2">|</span>
+                <span class="ms-2">Последнее обновление: <span id="realTimeUpdate">{{ monitoring_data.timestamp or 'N/A' }}</span></span>
+            </small>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-refresh monitoring data
+setInterval(refreshMonitoring, 30000);
+
+async function refreshMonitoring() {
+    try {
+        const response = await adminRequest('/admin/api/monitoring');
+        if (response.success) {
+            updateMonitoringDisplay(response.data);
+        }
+    } catch (error) {
+        console.error('Error refreshing monitoring data:', error);
+    }
+}
+
+function updateMonitoringDisplay(data) {
+    // Update timestamps
+    document.getElementById('lastUpdateTime').textContent = data.timestamp || 'N/A';
+    document.getElementById('realTimeUpdate').textContent = data.timestamp || 'N/A';
+}
+
+async function refreshAll() {
+    showNotification('Обновление данных мониторинга...', 'info');
+    await refreshMonitoring();
+    showNotification('Данные мониторинга обновлены', 'success');
+}
+
+async function checkDatabaseConnection() {
+    try {
+        const response = await fetch('/database/stats');
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            showNotification('Подключение к базе данных работает нормально', 'success');
+        } else {
+            showNotification('Ошибка подключения к базе данных: ' + data.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Ошибка проверки подключения: ' + error.message, 'danger');
+    }
+}
+
+async function getConnectionStats() {
+    try {
+        const response = await fetch('/database/stats');
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            const stats = data.data;
+            let message = 'Статистика подключений:\n';
+            message += `Пул включен: ${stats.pooling_enabled ? 'Да' : 'Нет'}\n`;
+
+            if (stats.pools) {
+                message += `Количество пулов: ${Object.keys(stats.pools).length}\n`;
+                for (const [name, pool] of Object.entries(stats.pools)) {
+                    message += `${name}: ${pool.type || 'pool'}\n`;
+                }
+            }
+
+            alert(message);
+        } else {
+            showNotification('Ошибка получения статистики: ' + data.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Ошибка получения статистики: ' + error.message, 'danger');
+    }
+}
+</script>
+{% endblock %}

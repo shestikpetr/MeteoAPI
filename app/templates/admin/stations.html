@@ -1,0 +1,564 @@
+{% extends "admin/base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Станции</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h3 mb-2">
+                    <i class="bi bi-geo-alt me-2"></i>
+                    Управление станциями
+                </h1>
+                <p class="text-muted">Добавление, редактирование и управление метеостанциями</p>
+            </div>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createStationModal">
+                <i class="bi bi-plus-circle me-2"></i>
+                Создать станцию
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row mb-4">
+    <div class="col-xl-4 col-md-6 mb-3">
+        <div class="stat-card text-success">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value">{{ stations_data.total_count or 0 }}</div>
+                    <div class="stat-label">Всего станций</div>
+                </div>
+                <i class="bi bi-geo-alt fs-1 opacity-25"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6 mb-3">
+        <div class="stat-card text-info">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="activeCount">
+                        {{ stations_data.stations | selectattr('is_active') | list | length }}
+                    </div>
+                    <div class="stat-label">Активных</div>
+                </div>
+                <i class="bi bi-check-circle fs-1 opacity-25"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-md-6 mb-3">
+        <div class="stat-card text-warning">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="inactiveCount">
+                        {{ stations_data.stations | rejectattr('is_active') | list | length }}
+                    </div>
+                    <div class="stat-label">Неактивных</div>
+                </div>
+                <i class="bi bi-x-circle fs-1 opacity-25"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stations Table -->
+<div class="admin-table mb-4">
+    <div class="table-responsive">
+        <table class="table table-hover" id="stationsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Номер</th>
+                    <th>Название</th>
+                    <th>Местоположение</th>
+                    <th>Координаты</th>
+                    <th>Высота</th>
+                    <th>Статус</th>
+                    <th>Параметры</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for station in stations_data.stations %}
+                <tr id="station-row-{{ station.id }}">
+                    <td>{{ station.id }}</td>
+                    <td>
+                        <strong class="text-primary">{{ station.station_number }}</strong>
+                    </td>
+                    <td>
+                        <div>
+                            <strong>{{ station.name }}</strong>
+                        </div>
+                    </td>
+                    <td>
+                        <small class="text-muted">
+                            {{ station.location or 'N/A' }}
+                        </small>
+                    </td>
+                    <td>
+                        {% if station.latitude and station.longitude %}
+                            <small class="text-muted">
+                                {{ "%.4f"|format(station.latitude) }}, {{ "%.4f"|format(station.longitude) }}
+                            </small>
+                        {% else %}
+                            <small class="text-muted">N/A</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if station.altitude %}
+                            <small>{{ station.altitude }}m</small>
+                        {% else %}
+                            <small class="text-muted">N/A</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if station.is_active %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle me-1"></i>Активна
+                            </span>
+                        {% else %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-x-circle me-1"></i>Неактивна
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-info">{{ station.parameters_count or 0 }}</span>
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-primary" onclick="editStation({{ station.id }})" title="Редактировать">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-outline-info" onclick="viewStationDetails({{ station.id }})" title="Детали">
+                                <i class="bi bi-info-circle"></i>
+                            </button>
+                            {% if station.is_active %}
+                                <button class="btn btn-outline-warning" onclick="toggleStationStatus({{ station.id }}, false)" title="Деактивировать">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                            {% else %}
+                                <button class="btn btn-outline-success" onclick="toggleStationStatus({{ station.id }}, true)" title="Активировать">
+                                    <i class="bi bi-check-circle"></i>
+                                </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create Station Modal -->
+<div class="modal fade" id="createStationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Создать станцию
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createStationForm">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="createStationNumber" class="form-label">Номер станции *</label>
+                            <input type="text" class="form-control" id="createStationNumber" name="station_number" required>
+                            <div class="form-text">Уникальный идентификатор станции</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="createName" class="form-label">Название *</label>
+                            <input type="text" class="form-control" id="createName" name="name" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="createLocation" class="form-label">Местоположение</label>
+                        <input type="text" class="form-control" id="createLocation" name="location">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="createLatitude" class="form-label">Широта</label>
+                            <input type="number" step="0.0001" class="form-control" id="createLatitude" name="latitude">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="createLongitude" class="form-label">Долгота</label>
+                            <input type="number" step="0.0001" class="form-control" id="createLongitude" name="longitude">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="createAltitude" class="form-label">Высота (м)</label>
+                            <input type="number" class="form-control" id="createAltitude" name="altitude">
+                        </div>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="createIsActive" name="is_active" checked>
+                        <label class="form-check-label" for="createIsActive">
+                            Активная станция
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check me-1"></i>
+                        Создать
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Station Modal -->
+<div class="modal fade" id="editStationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-pencil me-2"></i>
+                    Редактировать станцию
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editStationForm">
+                <input type="hidden" id="editStationId" name="station_id">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="editStationNumber" class="form-label">Номер станции</label>
+                            <input type="text" class="form-control" id="editStationNumber" name="station_number" readonly>
+                            <div class="form-text">Номер станции нельзя изменить</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="editName" class="form-label">Название *</label>
+                            <input type="text" class="form-control" id="editName" name="name" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="editLocation" class="form-label">Местоположение</label>
+                        <input type="text" class="form-control" id="editLocation" name="location">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="editLatitude" class="form-label">Широта</label>
+                            <input type="number" step="0.0001" class="form-control" id="editLatitude" name="latitude">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="editLongitude" class="form-label">Долгота</label>
+                            <input type="number" step="0.0001" class="form-control" id="editLongitude" name="longitude">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="editAltitude" class="form-label">Высота (м)</label>
+                            <input type="number" class="form-control" id="editAltitude" name="altitude">
+                        </div>
+                    </div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="editIsActive" name="is_active">
+                        <label class="form-check-label" for="editIsActive">
+                            Активная станция
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check me-1"></i>
+                        Сохранить
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Station Details Modal -->
+<div class="modal fade" id="stationDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Детали станции
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="stationDetailsContent">
+                <!-- Будет заполнено динамически -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Current stations data
+let stationsData = {{ stations_data.stations | tojson }};
+
+// Load initial data on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadInitialData();
+});
+
+// Load initial data from API
+async function loadInitialData() {
+    try {
+        const response = await adminRequest('/admin/api/stations');
+        if (response.success) {
+            stationsData = response.data.stations;
+            updateTable();
+            updateStats();
+        }
+    } catch (error) {
+        console.error('Failed to load initial data:', error);
+        showNotification('Ошибка загрузки данных станций', 'danger');
+    }
+}
+
+// Update table with current data
+function updateTable() {
+    const tbody = document.querySelector('#stationsTable tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = stationsData.map(station => `
+        <tr id="station-row-${station.id}">
+            <td>${station.id}</td>
+            <td>
+                <strong class="text-primary">${station.station_number}</strong>
+            </td>
+            <td>
+                <div>
+                    <strong>${station.name}</strong>
+                </div>
+            </td>
+            <td>
+                <small class="text-muted">${station.location || 'N/A'}</small>
+            </td>
+            <td>
+                ${station.latitude && station.longitude
+                    ? `<small class="text-muted">${station.latitude.toFixed(4)}, ${station.longitude.toFixed(4)}</small>`
+                    : '<small class="text-muted">N/A</small>'}
+            </td>
+            <td>
+                ${station.altitude
+                    ? `<small>${station.altitude}m</small>`
+                    : '<small class="text-muted">N/A</small>'}
+            </td>
+            <td>
+                ${station.is_active
+                    ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Активна</span>'
+                    : '<span class="badge bg-warning"><i class="bi bi-x-circle me-1"></i>Неактивна</span>'}
+            </td>
+            <td>
+                <span class="badge bg-info">${station.parameters_count || 0}</span>
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary" onclick="editStation(${station.id})" title="Редактировать">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-outline-info" onclick="viewStationDetails(${station.id})" title="Детали">
+                        <i class="bi bi-info-circle"></i>
+                    </button>
+                    ${station.is_active
+                        ? `<button class="btn btn-outline-warning" onclick="toggleStationStatus(${station.id}, false)" title="Деактивировать">
+                               <i class="bi bi-x-circle"></i>
+                           </button>`
+                        : `<button class="btn btn-outline-success" onclick="toggleStationStatus(${station.id}, true)" title="Активировать">
+                               <i class="bi bi-check-circle"></i>
+                           </button>`}
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Create station form submission
+document.getElementById('createStationForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const stationData = {
+        station_number: formData.get('station_number'),
+        name: formData.get('name'),
+        location: formData.get('location') || null,
+        latitude: formData.get('latitude') ? parseFloat(formData.get('latitude')) : null,
+        longitude: formData.get('longitude') ? parseFloat(formData.get('longitude')) : null,
+        altitude: formData.get('altitude') ? parseInt(formData.get('altitude')) : null,
+        is_active: formData.get('is_active') === 'on'
+    };
+
+    try {
+        const response = await adminRequest('/admin/api/stations', {
+            method: 'POST',
+            body: JSON.stringify(stationData)
+        });
+
+        if (response.success) {
+            showNotification('Станция создана успешно', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('createStationModal')).hide();
+            this.reset();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showNotification('Ошибка создания станции: ' + response.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Ошибка создания станции: ' + error.message, 'danger');
+    }
+});
+
+// Edit station form submission
+document.getElementById('editStationForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const stationId = formData.get('station_id');
+    const stationData = {
+        name: formData.get('name'),
+        location: formData.get('location') || null,
+        latitude: formData.get('latitude') ? parseFloat(formData.get('latitude')) : null,
+        longitude: formData.get('longitude') ? parseFloat(formData.get('longitude')) : null,
+        altitude: formData.get('altitude') ? parseInt(formData.get('altitude')) : null,
+        is_active: formData.get('is_active') === 'on'
+    };
+
+    try {
+        const response = await adminRequest(`/admin/api/stations/${stationId}`, {
+            method: 'PUT',
+            body: JSON.stringify(stationData)
+        });
+
+        if (response.success) {
+            showNotification('Станция обновлена успешно', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('editStationModal')).hide();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showNotification('Ошибка обновления станции: ' + response.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Ошибка обновления станции: ' + error.message, 'danger');
+    }
+});
+
+// Edit station function
+async function editStation(stationId) {
+    const station = stationsData.find(s => s.id === stationId);
+    if (!station) {
+        showNotification('Станция не найдена', 'danger');
+        return;
+    }
+
+    // Fill form
+    document.getElementById('editStationId').value = station.id;
+    document.getElementById('editStationNumber').value = station.station_number;
+    document.getElementById('editName').value = station.name;
+    document.getElementById('editLocation').value = station.location || '';
+    document.getElementById('editLatitude').value = station.latitude || '';
+    document.getElementById('editLongitude').value = station.longitude || '';
+    document.getElementById('editAltitude').value = station.altitude || '';
+    document.getElementById('editIsActive').checked = station.is_active;
+
+    // Show modal
+    new bootstrap.Modal(document.getElementById('editStationModal')).show();
+}
+
+// View station details
+async function viewStationDetails(stationId) {
+    const station = stationsData.find(s => s.id === stationId);
+    if (!station) {
+        showNotification('Станция не найдена', 'danger');
+        return;
+    }
+
+    const content = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="text-muted">Основная информация</h6>
+                <table class="table table-sm">
+                    <tr><th>ID:</th><td>${station.id}</td></tr>
+                    <tr><th>Номер:</th><td><strong>${station.station_number}</strong></td></tr>
+                    <tr><th>Название:</th><td>${station.name}</td></tr>
+                    <tr><th>Местоположение:</th><td>${station.location || 'N/A'}</td></tr>
+                    <tr><th>Статус:</th><td>${station.is_active ? '<span class="badge bg-success">Активна</span>' : '<span class="badge bg-warning">Неактивна</span>'}</td></tr>
+                    <tr><th>Создана:</th><td>${station.created_at || 'N/A'}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-muted">Географические данные</h6>
+                <table class="table table-sm">
+                    <tr><th>Широта:</th><td>${station.latitude ? station.latitude.toFixed(4) : 'N/A'}</td></tr>
+                    <tr><th>Долгота:</th><td>${station.longitude ? station.longitude.toFixed(4) : 'N/A'}</td></tr>
+                    <tr><th>Высота:</th><td>${station.altitude ? station.altitude + ' м' : 'N/A'}</td></tr>
+                    <tr><th>Параметров:</th><td><span class="badge bg-info">${station.parameters_count || 0}</span></td></tr>
+                </table>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('stationDetailsContent').innerHTML = content;
+    new bootstrap.Modal(document.getElementById('stationDetailsModal')).show();
+}
+
+// Toggle station status
+async function toggleStationStatus(stationId, isActive) {
+    const action = isActive ? 'активировать' : 'деактивировать';
+
+    if (!confirm(`Вы действительно хотите ${action} эту станцию?`)) {
+        return;
+    }
+
+    try {
+        const response = await adminRequest(`/admin/api/stations/${stationId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ is_active: isActive })
+        });
+
+        if (response.success) {
+            showNotification(`Станция ${isActive ? 'активирована' : 'деактивирована'} успешно`, 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showNotification('Ошибка изменения статуса: ' + response.error, 'danger');
+        }
+    } catch (error) {
+        showNotification('Ошибка изменения статуса: ' + error.message, 'danger');
+    }
+}
+
+// Auto-refresh data every 60 seconds
+setInterval(async () => {
+    try {
+        const response = await adminRequest('/admin/api/stations');
+        if (response.success) {
+            stationsData = response.data.stations;
+            updateTable();
+            updateStats();
+        }
+    } catch (error) {
+        console.error('Auto-refresh error:', error);
+    }
+}, 60000);
+
+function updateStats() {
+    const activeCount = stationsData.filter(s => s.is_active).length;
+    const inactiveCount = stationsData.filter(s => !s.is_active).length;
+
+    document.getElementById('activeCount').textContent = activeCount;
+    document.getElementById('inactiveCount').textContent = inactiveCount;
+}
+</script>
+{% endblock %}

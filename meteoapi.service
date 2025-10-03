@@ -1,0 +1,19 @@
+[Unit]
+Description=MeteoAPI Gunicorn daemon
+After=network.target
+
+[Service]
+Type=notify
+# the specific user that our service will run as
+User=shestikpetr
+Group=shestikpetr
+RuntimeDirectory=gunicorn
+WorkingDirectory=/home/shestikpetr/MeteoAPI
+ExecStart=/home/shestikpetr/MeteoAPI/venv/bin/gunicorn --config /home/shestikpetr/MeteoAPI/gunicorn.conf.py main:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

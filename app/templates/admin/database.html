@@ -1,0 +1,133 @@
+{% extends "admin/base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">База данных</li>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h2 class="mb-0">База данных</h2>
+            <p class="text-muted">Управление всеми таблицами базы данных</p>
+        </div>
+    </div>
+
+    <!-- Database Tables -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-database me-2"></i>
+                        База данных (meteo_local)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive" id="tablesContainer">
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                            <p class="text-muted mt-2">Загрузка таблиц...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Fetch and display all tables
+    async function loadTables() {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('/admin/api/database/tables', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load tables');
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                displayTables(result.data);
+            } else {
+                throw new Error(result.error || 'Failed to load tables');
+            }
+        } catch (error) {
+            console.error('Error loading tables:', error);
+            document.getElementById('tablesContainer').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Ошибка загрузки таблиц: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    function displayTables(tables) {
+        const container = document.getElementById('tablesContainer');
+
+        if (tables.length === 0) {
+            container.innerHTML = '<p class="text-muted">Таблицы не найдены</p>';
+            return;
+        }
+
+        let html = `
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Название таблицы</th>
+                        <th class="text-end">Записей (прибл.)</th>
+                        <th>Комментарий</th>
+                        <th class="text-end">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        tables.forEach(table => {
+            html += `
+                <tr>
+                    <td>
+                        <strong>${table.name}</strong>
+                    </td>
+                    <td class="text-end">${formatNumber(table.rows)}</td>
+                    <td><small class="text-muted">${table.comment || '-'}</small></td>
+                    <td class="text-end">
+                        <a href="/admin/database/${table.name}?database=local"
+                           class="btn btn-sm btn-primary">
+                            <i class="bi bi-pencil-square"></i> Управление
+                        </a>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `
+                </tbody>
+            </table>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    // Format number with thousands separator
+    function formatNumber(num) {
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    }
+
+    // Load tables on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadTables();
+    });
+</script>
+{% endblock %}

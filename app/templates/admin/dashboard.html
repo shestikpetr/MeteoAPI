@@ -1,0 +1,385 @@
+{% extends "admin/base.html" %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item active">Dashboard</li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="h3 mb-3">
+            <i class="bi bi-speedometer2 me-2"></i>
+            Административная панель MeteoApp
+        </h1>
+        <p class="text-muted">Обзор системы и основная статистика</p>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <!-- Users Stats -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="stat-card text-primary">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="totalUsers">{{ stats.users.total or 0 }}</div>
+                    <div class="stat-label">Всего пользователей</div>
+                </div>
+                <i class="bi bi-people fs-1 opacity-25"></i>
+            </div>
+            <div class="mt-3">
+                <small class="text-success">
+                    <i class="bi bi-check-circle"></i>
+                    Активных: <span id="activeUsers">{{ stats.users.active or 0 }}</span>
+                </small>
+                <br>
+                <small class="text-info">
+                    <i class="bi bi-shield-check"></i>
+                    Админов: <span id="adminUsers">{{ stats.users.admins or 0 }}</span>
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stations Stats -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="stat-card text-success">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="totalStations">{{ stats.stations.total or 0 }}</div>
+                    <div class="stat-label">Всего станций</div>
+                </div>
+                <i class="bi bi-geo-alt fs-1 opacity-25"></i>
+            </div>
+            <div class="mt-3">
+                <small class="text-success">
+                    <i class="bi bi-check-circle"></i>
+                    Активных: <span id="activeStations">{{ stats.stations.active or 0 }}</span>
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Database Stats -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="stat-card text-info">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value">
+                        {% if stats.database.pooling_enabled %}
+                            <i class="bi bi-database-check"></i>
+                        {% else %}
+                            <i class="bi bi-database"></i>
+                        {% endif %}
+                    </div>
+                    <div class="stat-label">Пул подключений</div>
+                </div>
+                <i class="bi bi-server fs-1 opacity-25"></i>
+            </div>
+            <div class="mt-3">
+                {% if stats.database.pooling_enabled %}
+                    <small class="text-success">
+                        <i class="bi bi-check-circle"></i>
+                        Включен
+                    </small>
+                {% else %}
+                    <small class="text-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        Выключен
+                    </small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- System Status -->
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="stat-card text-warning">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                    </div>
+                    <div class="stat-label">Статус системы</div>
+                </div>
+                <i class="bi bi-activity fs-1 opacity-25"></i>
+            </div>
+            <div class="mt-3">
+                <small class="text-success">
+                    <i class="bi bi-check-circle"></i>
+                    Работает нормально
+                </small>
+                <br>
+                <small class="text-muted" id="lastUpdate">
+                    {{ stats.system.timestamp or 'N/A' }}
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <!-- Users Chart -->
+    <div class="col-xl-6 col-lg-6 mb-4">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-people me-2"></i>
+                    Пользователи
+                </h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshUsersChart()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+            <div class="chart-container">
+                <canvas id="usersChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stations Chart -->
+    <div class="col-xl-6 col-lg-6 mb-4">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-geo-alt me-2"></i>
+                    Станции
+                </h5>
+                <button class="btn btn-sm btn-outline-success" onclick="refreshStationsChart()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+            <div class="chart-container">
+                <canvas id="stationsChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Information -->
+<div class="row mb-4">
+    <div class="col-xl-8 col-lg-7 mb-4">
+        <div class="stat-card">
+            <h5 class="card-title mb-3">
+                <i class="bi bi-info-circle me-2"></i>
+                Информация о системе
+            </h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-muted">Конфигурация базы данных</h6>
+                    <ul class="list-unstyled">
+                        <li>
+                            <strong>Пул подключений:</strong>
+                            {% if stats.database.pooling_enabled %}
+                                <span class="badge bg-success">Включен</span>
+                            {% else %}
+                                <span class="badge bg-warning">Выключен</span>
+                            {% endif %}
+                        </li>
+                        {% if stats.database.pools %}
+                            {% for pool_name, pool_info in stats.database.pools.items() %}
+                                <li>
+                                    <strong>{{ pool_name|title }}:</strong>
+                                    {% if pool_info.get('type') == 'single_connection' %}
+                                        <span class="badge bg-secondary">Одиночное подключение</span>
+                                    {% else %}
+                                        <span class="badge bg-info">Пул</span>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        {% endif %}
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="text-muted">Системные настройки</h6>
+                    <ul class="list-unstyled">
+                        <li><strong>Версия API:</strong> 2.0.0</li>
+                        <li><strong>Framework:</strong> FastAPI</li>
+                        <li><strong>Последнее обновление:</strong> {{ stats.system.timestamp or 'N/A' }}</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-4 col-lg-5 mb-4">
+        <div class="stat-card">
+            <h5 class="card-title mb-3">
+                <i class="bi bi-lightning me-2"></i>
+                Быстрые действия
+            </h5>
+            <div class="d-grid gap-2">
+                <a href="/admin/users" class="btn btn-primary">
+                    <i class="bi bi-people me-2"></i>
+                    Управление пользователями
+                </a>
+                <a href="/admin/stations" class="btn btn-success">
+                    <i class="bi bi-geo-alt me-2"></i>
+                    Управление станциями
+                </a>
+                <a href="/admin/monitoring" class="btn btn-info">
+                    <i class="bi bi-graph-up me-2"></i>
+                    Мониторинг системы
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auto-refresh indicator -->
+<div class="row">
+    <div class="col-12">
+        <div class="text-center text-muted">
+            <small>
+                <i class="bi bi-arrow-clockwise"></i>
+                Автообновление каждые 30 секунд
+            </small>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Chart instances
+let usersChart = null;
+let stationsChart = null;
+
+// Initialize charts
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+    refreshStats();  // Load data immediately
+    startAutoRefresh();
+});
+
+function initializeCharts() {
+    // Users pie chart
+    const usersCtx = document.getElementById('usersChart').getContext('2d');
+    const usersData = {
+        active: {{ stats.users.active or 0 }},
+        inactive: {{ stats.users.inactive or 0 }},
+        admins: {{ stats.users.admins or 0 }}
+    };
+
+    usersChart = new Chart(usersCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Активные', 'Неактивные', 'Администраторы'],
+            datasets: [{
+                data: [usersData.active, usersData.inactive, usersData.admins],
+                backgroundColor: [
+                    '#198754',
+                    '#6c757d',
+                    '#0d6efd'
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // Stations pie chart
+    const stationsCtx = document.getElementById('stationsChart').getContext('2d');
+    const stationsData = {
+        active: {{ stats.stations.active or 0 }},
+        inactive: {{ stats.stations.inactive or 0 }}
+    };
+
+    stationsChart = new Chart(stationsCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Активные', 'Неактивные'],
+            datasets: [{
+                data: [stationsData.active, stationsData.inactive],
+                backgroundColor: [
+                    '#198754',
+                    '#6c757d'
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+// Refresh stats from API
+async function refreshStats() {
+    try {
+        const response = await adminRequest('/admin/api/dashboard-stats');
+        if (response.success) {
+            updateStatsDisplay(response.data);
+            updateCharts(response.data);
+        }
+    } catch (error) {
+        console.error('Error refreshing stats:', error);
+    }
+}
+
+// Update stats display
+function updateStatsDisplay(stats) {
+    document.getElementById('totalUsers').textContent = stats.users.total || 0;
+    document.getElementById('activeUsers').textContent = stats.users.active || 0;
+    document.getElementById('adminUsers').textContent = stats.users.admins || 0;
+    document.getElementById('totalStations').textContent = stats.stations.total || 0;
+    document.getElementById('activeStations').textContent = stats.stations.active || 0;
+    document.getElementById('lastUpdate').textContent = stats.system.timestamp || 'N/A';
+}
+
+// Update charts
+function updateCharts(stats) {
+    // Update users chart
+    if (usersChart) {
+        usersChart.data.datasets[0].data = [
+            stats.users.active || 0,
+            stats.users.inactive || 0,
+            stats.users.admins || 0
+        ];
+        usersChart.update();
+    }
+
+    // Update stations chart
+    if (stationsChart) {
+        stationsChart.data.datasets[0].data = [
+            stats.stations.active || 0,
+            stats.stations.inactive || 0
+        ];
+        stationsChart.update();
+    }
+}
+
+// Manual refresh functions
+function refreshUsersChart() {
+    refreshStats();
+    showNotification('Статистика пользователей обновлена', 'info');
+}
+
+function refreshStationsChart() {
+    refreshStats();
+    showNotification('Статистика станций обновлена', 'info');
+}
+
+// Auto-refresh every 30 seconds
+function startAutoRefresh() {
+    setInterval(refreshStats, 30000);
+}
+</script>
+{% endblock %}
